@@ -11,8 +11,6 @@ export const KIND_LABEL: Record<PayslipKind, Record<Locale, string>> = {
   ANNUAL: { en: "Annual certificate", de: "Jahresbescheinigung" },
 };
 
-export const MAX_PAYSLIP_BYTES = 5 * 1024 * 1024;
-
 export function periodLabel(kind: string, year: number, month: number, locale: Locale): string {
   if (kind === "ANNUAL" || month === 0) return String(year);
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(locale === "de" ? "de-DE" : "en-GB", { month: "long", year: "numeric", timeZone: "UTC" });

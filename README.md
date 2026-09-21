@@ -6,21 +6,41 @@ Rider onboarding and fleet back-office for a German Uber Eats fleet partner that
 - **Back-office** (`/admin`): review queue, document viewer with per-document checklists, Uber activation pipeline, work-day compliance, **schedule and coverage**, e-bike fleet, **payroll documents**, audit log, team management, CSV exports.
 - **Staff sign-in** (`/staff/login`): separate from the rider login, password plus authenticator app.
 
-## Run it
+## Run it locally
 
-Requires Node 20+.
+Requires Node 22+ and Docker (for the local PostgreSQL).
 
 ```bash
 npm install
 cp .env.example .env        # Windows: copy .env.example .env. Then fill in SESSION_SECRET and FIELD_ENCRYPTION_KEY
-npm run db:push             # create the SQLite database
+npm run db:up               # starts PostgreSQL in Docker on port 5433 (matches .env.example)
+npm run db:migrate          # creates the tables
 npm run owner:setup         # create YOUR admin login (see below)
 npm run dev                 # http://localhost:3000
 ```
 
-Generate secrets with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`.
+Generate secrets with `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. Locally, uploads are stored (encrypted) in `./storage`. Without Docker, point `DATABASE_URL` and `DATABASE_URL_UNPOOLED` at any PostgreSQL 15+ (for example a free Neon database).
 
-Optional sample data: `npm run seed:demo` adds demo staff (`demo-admin` / `DemoAdmin#2026x`, `demo-reviewer` / `DemoReviewer#2026x`), 8 riders in every pipeline state, 6 e-bikes, payslips and availability. Demo riders sign in with `<first>.<last>@example.com` / `Rider#Demo2026x`. **These passwords are published in this repository; never seed demo data on a real deployment.**
+## Deploy to Vercel
+
+The app runs on Vercel with a hosted PostgreSQL and a **private** Vercel Blob store for the (already encrypted) files. Vercel cannot keep a SQLite file or write uploads to disk, which is why both are required.
+
+1. Import this repository in Vercel (**Add New → Project**). `vercel.json` pins the functions to **Frankfurt (fra1)** and uses `scripts/vercel-build.mjs` as the build command; `package.json` pins Node 22.
+2. **Storage → Create → Neon** (Postgres), region **Frankfurt (aws-eu-central-1)**, and connect it to the project. This sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+3. **Storage → Create → Blob**, access **Private** (it cannot be changed later), region **Frankfurt**, and connect it to the project. This sets `BLOB_STORE_ID`; authentication uses short-lived OIDC tokens, so no long-lived secret exists.
+4. **Settings → Environment Variables** (Production): set `SESSION_SECRET` and `FIELD_ENCRYPTION_KEY` to freshly generated values (never reuse your local ones), and `APP_URL` to your production address. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` if you want Google sign-in. Leave `STAFF_2FA` unset.
+   **Back up `FIELD_ENCRYPTION_KEY` in a password manager.** It encrypts every document and payroll field; if it is lost, that data cannot be recovered.
+5. Deploy. Production builds apply pending database migrations automatically; preview branches never touch the production database.
+6. Create your owner login against the production database, from your own machine:
+   ```bash
+   vercel env pull .env.production.local
+   node --env-file=.env.production.local --import tsx scripts/owner-setup.ts
+   ```
+   Then sign in at `/staff/login`. Do **not** run `seed:demo` in production.
+
+Limits to know: Vercel rejects request bodies above 4.5 MB, so each uploaded document or payslip may be at most **4 MB** (phone photos are downscaled in the browser first). Rate limiting is stored in the database, so it holds across serverless instances. The Hobby plan is for non-commercial use only; a company should use a Pro team.
+
+Optional sample data (local only): `npm run seed:demo` adds demo staff (`demo-admin` / `DemoAdmin#2026x`, `demo-reviewer` / `DemoReviewer#2026x`), 8 riders in every pipeline state, 6 e-bikes, payslips and availability. Demo riders sign in with `<first>.<last>@example.com` / `Rider#Demo2026x`. **These passwords are published in this repository; never seed demo data on a real deployment.**
 
 npm 11.17+ blocks install scripts by default; this repo approves only the three Prisma packages (`allowScripts` in `package.json`).
 
@@ -69,8 +89,7 @@ Uber's rules, mirrored in the review checklists: photograph the **original** (no
 ## Before production
 
 1. Legal review by a German employment lawyer and tax advisor (employee vs. self-employed model, contract, privacy notice in `lib/i18n.ts`, retention periods). This is not legal advice.
-2. Switch `prisma/schema.prisma` to PostgreSQL; string `contains` filters then need `mode: "insensitive"`.
-3. Replace `lib/storage.ts` with S3 (eu-central-1) using the same three functions; keep `FIELD_ENCRYPTION_KEY` in a secrets manager and plan key rotation.
-4. Serve over HTTPS behind a trusted proxy (the rate limiter reads `x-forwarded-for`); move the rate limiter to Redis if you run several instances.
-5. Add email/SMS delivery for notifications and password reset (today an admin issues temporary passwords), a retention job that purges documents of rejected applicants, and database backups.
-6. Consider automated identity verification (ID plus selfie liveness); verification is manual today.
+2. Turn on database backups (point-in-time recovery) on your Postgres plan, and plan rotation of `FIELD_ENCRYPTION_KEY` (a rotation needs a re-encryption job; none exists yet).
+3. Add email/SMS delivery for notifications and password reset (today an admin issues temporary passwords), and a retention job that purges documents of rejected applicants.
+4. Consider automated identity verification (ID plus selfie liveness); verification is manual today.
+5. Uploads pass through the server, hence the 4 MB limit. If riders need larger files, switch to direct-to-Blob client uploads.

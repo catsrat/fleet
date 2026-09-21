@@ -23,7 +23,7 @@ export async function changePassword(fd: FormData): Promise<FormState> {
   const existing = String(fd.get("current") ?? "");
   const next = String(fd.get("next") ?? "");
 
-  if (!rateLimit(`pw:${user.id}`, 5, 15 * 60_000).ok) return { error: "Too many attempts. Try again in a few minutes." };
+  if (!(await rateLimit(`pw:${user.id}`, 5, 15 * 60_000)).ok) return { error: "Too many attempts. Try again in a few minutes." };
   if (!(await checkPassword(existing, user.passwordHash))) return { error: "Your current password is incorrect." };
   const problem = isStaffRole(user.role) ? validateStaffPassword(next) : validatePassword(next);
   if (problem) return { error: problem };
@@ -41,7 +41,7 @@ export type CodesResult = FormState & { codes?: string[] };
 export async function regenerateRecoveryCodes(fd: FormData): Promise<CodesResult> {
   const user = await current();
   if (!isStaffRole(user.role) || !user.totpEnabledAt) return { error: "Two-factor sign-in is not enabled." };
-  if (!rateLimit(`pw:${user.id}`, 5, 15 * 60_000).ok) return { error: "Too many attempts. Try again in a few minutes." };
+  if (!(await rateLimit(`pw:${user.id}`, 5, 15 * 60_000)).ok) return { error: "Too many attempts. Try again in a few minutes." };
   if (!(await checkPassword(String(fd.get("password") ?? ""), user.passwordHash))) return { error: "Your password is incorrect." };
 
   const codes = generateRecoveryCodes(8);

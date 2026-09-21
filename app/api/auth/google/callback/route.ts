@@ -15,7 +15,7 @@ export async function GET(req: NextRequest): Promise<Response> {
   };
 
   const cfg = googleConfig();
-  if (!cfg || !rateLimit(`google:${await clientIp()}`, 30, 10 * 60_000).ok) return fail();
+  if (!cfg || !(await rateLimit(`google:${await clientIp()}`, 30, 10 * 60_000)).ok) return fail();
 
   const params = req.nextUrl.searchParams;
   const code = params.get("code");

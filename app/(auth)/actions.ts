@@ -25,7 +25,7 @@ export async function login(fd: FormData): Promise<FormState> {
   const password = String(fd.get("password") ?? "");
 
   const key = `login:${await clientIp()}:${email}`;
-  const limit = rateLimit(key, 5, 15 * 60_000);
+  const limit = await rateLimit(key, 5, 15 * 60_000);
   if (!limit.ok) {
     const mins = Math.ceil(limit.retryAfterSec / 60);
     return { error: tr(locale, `Too many attempts. Try again in ${mins} min.`, `Zu viele Versuche. Bitte in ${mins} Min. erneut versuchen.`) };
@@ -37,7 +37,7 @@ export async function login(fd: FormData): Promise<FormState> {
     return { error: tr(locale, "Invalid email or password.", "E-Mail oder Passwort ist falsch.") };
   }
 
-  resetRateLimit(key);
+  await resetRateLimit(key);
   await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   await createSession(user.id, user.role);
   redirect("/apply");
@@ -59,7 +59,7 @@ export async function register(fd: FormData): Promise<FormState> {
   const pwError = validatePassword(password);
   if (pwError) return { error: tr(locale, pwError, "Das Passwort muss mindestens 10 Zeichen lang sein und Buchstaben sowie Zahlen enthalten.") };
 
-  const limit = rateLimit(`register:${await clientIp()}`, 10, 60 * 60_000);
+  const limit = await rateLimit(`register:${await clientIp()}`, 10, 60 * 60_000);
   if (!limit.ok) return { error: tr(locale, "Too many sign-ups from this network. Try again later.", "Zu viele Registrierungen aus diesem Netzwerk. Bitte später erneut versuchen.") };
 
   if (await db.user.findUnique({ where: { email } })) {

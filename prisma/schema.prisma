@@ -1,14 +1,18 @@
-// Nucleus Fleet data model.
-// Enum-like columns are plain strings (values live in lib/constants.ts) so the
-// schema is identical on SQLite (dev) and PostgreSQL (production).
+// Nucleus Fleet data model (PostgreSQL).
+// Enum-like columns are plain strings; their allowed values live in lib/constants.ts.
 
 generator client {
   provider = "prisma-client-js"
+  // The Vercel build machines run Linux; keep the matching query engine next to the local one.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
+  // Pooled connection for the running app (serverless functions open many short connections).
+  url = env("DATABASE_URL")
+  // Direct connection for migrations. On Neon this is DATABASE_URL_UNPOOLED; locally it equals DATABASE_URL.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 model User {
@@ -225,6 +229,14 @@ model AuditLog {
 
   @@index([riderId])
   @@index([at])
+}
+
+// Fixed-window counters for login, two-factor, upload and sign-up throttling. Kept in the database
+// because serverless instances do not share memory.
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime
 }
 
 model Notification {

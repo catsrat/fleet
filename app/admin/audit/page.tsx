@@ -16,7 +16,7 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   const showViews = sp.views === "1";
   const where = {
     ...(showViews ? {} : { action: { notIn: ["DOCUMENT_VIEWED", "PAYSLIP_VIEWED"] } }),
-    ...(sp.action ? { action: { contains: sp.action.toUpperCase() } } : {}),
+    ...(sp.action ? { action: { contains: sp.action.toUpperCase(), mode: "insensitive" as const } } : {}),
   };
   const [rows, total] = await Promise.all([
     db.auditLog.findMany({ where, orderBy: { at: "desc" }, take: PAGE_SIZE, skip: (page - 1) * PAGE_SIZE }),

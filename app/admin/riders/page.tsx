@@ -24,7 +24,16 @@ export default async function RidersPage({ searchParams }: { searchParams: Promi
     ...(sp.status && (RIDER_STATUSES as readonly string[]).includes(sp.status) ? { status: sp.status } : {}),
     ...(sp.city && (CITIES as readonly string[]).includes(sp.city) ? { city: sp.city } : {}),
     ...(sp.group === "EU" || sp.group === "NON_EU" ? { nationalityGroup: sp.group } : {}),
-    ...(q ? { OR: [{ firstName: { contains: q } }, { lastName: { contains: q } }, { university: { contains: q } }, { user: { email: { contains: q } } }] } : {}),
+    ...(q
+      ? {
+          OR: [
+            { firstName: { contains: q, mode: "insensitive" } },
+            { lastName: { contains: q, mode: "insensitive" } },
+            { university: { contains: q, mode: "insensitive" } },
+            { user: { email: { contains: q, mode: "insensitive" } } },
+          ],
+        }
+      : {}),
   };
 
   const [riders, total] = await Promise.all([

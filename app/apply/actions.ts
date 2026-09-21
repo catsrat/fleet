@@ -12,7 +12,8 @@ import { getLocale, tr } from "@/lib/locale";
 import { rateLimit } from "@/lib/rate-limit";
 import { currentDocs, daysUntil, docState, evaluate, refreshPipelineStatus } from "@/lib/rider";
 import { requireRider } from "@/lib/session";
-import { MAX_UPLOAD_BYTES, deleteFile, putFile, sniffMime } from "@/lib/storage";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/limits";
+import { deleteFile, putFile, sniffMime } from "@/lib/storage";
 import {
   isAdult,
   isValidIban,
@@ -170,9 +171,9 @@ export async function uploadDocument(fd: FormData): Promise<FormState> {
     return { error: tr(locale, "That document isn't needed for you.", "Dieses Dokument wird bei dir nicht benötigt.") };
   }
   if (!(file instanceof File) || file.size === 0) return { error: tr(locale, "Please choose a file.", "Bitte wähle eine Datei.") };
-  if (file.size > MAX_UPLOAD_BYTES) return { error: tr(locale, "File is too large (max 10 MB).", "Datei ist zu groß (max. 10 MB).") };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: tr(locale, `File is too large (max ${MAX_UPLOAD_LABEL}).`, `Datei ist zu groß (max. ${MAX_UPLOAD_LABEL}).`) };
   if (CLOSED.includes(rider.status)) return lockedError(locale);
-  if (!rateLimit(`upload:${user.id}`, 60, 60 * 60_000).ok) {
+  if (!(await rateLimit(`upload:${user.id}`, 60, 60 * 60_000)).ok) {
     return { error: tr(locale, "Too many uploads. Please try again in a while.", "Zu viele Uploads. Bitte versuche es später erneut.") };
   }
 

@@ -28,7 +28,7 @@ export async function staffLogin(fd: FormData): Promise<FormState> {
   const password = String(fd.get("password") ?? "");
 
   const key = `slogin:${await clientIp()}:${identifier}`;
-  const limit = rateLimit(key, 5, 15 * 60_000);
+  const limit = await rateLimit(key, 5, 15 * 60_000);
   if (!limit.ok) return { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterSec / 60)} min.` };
 
   const user = identifier ? await db.user.findFirst({ where: { OR: [{ username: identifier }, { email: identifier }] } }) : null;
@@ -40,7 +40,7 @@ export async function staffLogin(fd: FormData): Promise<FormState> {
     return { error: GENERIC_ERROR };
   }
 
-  resetRateLimit(key); // guessing is what this limiter stops; the second factor has its own limiter
+  await resetRateLimit(key); // guessing is what this limiter stops; the second factor has its own limiter
   if (user.totpEnabledAt) {
     await createPendingLogin(user.id, "verify");
     redirect("/staff/login/verify");
@@ -60,7 +60,7 @@ export async function staffVerify(fd: FormData): Promise<FormState> {
   const user = await db.user.findUnique({ where: { id: pending.userId } });
   if (!user || !user.active || !isStaffRole(user.role) || !user.totpEnabledAt) redirect("/staff/login");
 
-  const limit = rateLimit(`mfa:${user.id}`, 5, 10 * 60_000);
+  const limit = await rateLimit(`mfa:${user.id}`, 5, 10 * 60_000);
   if (!limit.ok) return { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterSec / 60)} min.` };
 
   const input = text(fd, "code");
@@ -89,7 +89,7 @@ export async function staffVerify(fd: FormData): Promise<FormState> {
     return { error: "That code is not valid. Check your authenticator app and try again." };
   }
 
-  resetRateLimit(`mfa:${user.id}`);
+  await resetRateLimit(`mfa:${user.id}`);
   await finishLogin(user);
   redirect("/admin");
 }
@@ -107,7 +107,7 @@ export async function confirmEnrollment(fd: FormData): Promise<EnrollResult> {
   const user = await db.user.findUnique({ where: { id: pending.userId } });
   if (!user || !user.active || !isStaffRole(user.role) || user.totpEnabledAt) redirect("/staff/login");
 
-  const limit = rateLimit(`mfa:${user.id}`, 5, 10 * 60_000);
+  const limit = await rateLimit(`mfa:${user.id}`, 5, 10 * 60_000);
   if (!limit.ok) return { error: `Too many attempts. Try again in ${Math.ceil(limit.retryAfterSec / 60)} min.` };
 
   const secret = decryptField(user.totpSecretEnc);
@@ -120,7 +120,7 @@ export async function confirmEnrollment(fd: FormData): Promise<EnrollResult> {
     data: { totpEnabledAt: new Date(), totpLastStep: step, recoveryCodes: JSON.stringify(codes.map(hashRecoveryCode)) },
   });
   await audit({ actor: { id: user.id, name: user.name }, action: "STAFF_2FA_ENABLED", entityType: "User", entityId: user.id });
-  resetRateLimit(`mfa:${user.id}`);
+  await resetRateLimit(`mfa:${user.id}`);
   return { ok: true, codes };
 }
 

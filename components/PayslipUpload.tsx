@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { deletePayslip, uploadPayslip } from "@/app/admin/payroll/actions";
+import { MAX_PAYSLIP_BYTES, MAX_UPLOAD_LABEL } from "@/lib/limits";
 
 interface Props {
   riderId: string;
@@ -21,6 +22,7 @@ export function PayslipUpload({ riderId, kind, year, month, existingId }: Props)
     e.target.value = "";
     if (!file) return;
     setError(undefined);
+    if (file.size > MAX_PAYSLIP_BYTES) return setError(`File is too large (max ${MAX_UPLOAD_LABEL}).`);
     const fd = new FormData();
     Object.entries({ riderId, kind, year, month }).forEach(([k, v]) => fd.set(k, String(v)));
     fd.set("file", file);

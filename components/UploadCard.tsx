@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { uploadDocument } from "@/app/apply/actions";
+import { MAX_UPLOAD_BYTES } from "@/lib/limits";
 
 export interface UploadCardProps {
   type: string;
@@ -38,7 +39,7 @@ const TONE: Record<string, string> = {
   EXPIRED: "bg-rose-100 text-rose-800",
 };
 
-const MAX_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = MAX_UPLOAD_BYTES;
 const MAX_EDGE = 2400;
 
 /** Phone photos are 4–12 MB; downscale to ~2400 px JPEG so uploads are fast on mobile data. */

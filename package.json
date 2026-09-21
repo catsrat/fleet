@@ -4,17 +4,22 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "seed:demo": "node --env-file=.env --import tsx prisma/seed.ts --demo",
-    "db:push": "prisma db push",
     "typecheck": "tsc --noEmit",
     "test": "node --env-file=.env --import tsx --test tests/*.test.ts",
-    "owner:setup": "node --env-file=.env --import tsx scripts/owner-setup.ts"
+    "owner:setup": "node --env-file=.env --import tsx scripts/owner-setup.ts",
+    "postinstall": "prisma generate",
+    "db:migrate": "prisma generate && prisma migrate deploy",
+    "db:dev": "prisma generate && prisma migrate dev",
+    "db:up": "docker compose up -d --wait db",
+    "db:down": "docker compose down"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
+    "@vercel/blob": "^2.8.0",
     "bcryptjs": "^3.0.3",
     "jose": "^6.2.12",
     "next": "16.3.5",
@@ -41,5 +46,8 @@
     "prisma@6.19.3": true,
     "@prisma/client@6.19.3": true,
     "@prisma/engines@6.19.3": true
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

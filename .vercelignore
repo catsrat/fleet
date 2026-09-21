@@ -1,0 +1,5 @@
+.env*
+!.env.example
+storage
+tests
+docker-compose.yml

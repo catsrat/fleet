@@ -1,0 +1,21 @@
+# Local development database only. Production uses a hosted Postgres (see README, "Deploy to Vercel").
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nucleus
+      POSTGRES_PASSWORD: nucleus
+      POSTGRES_DB: nucleus_fleet
+    ports:
+      - "5433:5432"
+    volumes:
+      - nucleus_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nucleus -d nucleus_fleet"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  nucleus_pgdata:

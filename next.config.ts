@@ -13,8 +13,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // A stray lockfile in the user's home directory confuses Turbopack's root detection.
   turbopack: { root: path.resolve(/*turbopackIgnore: true*/ process.cwd()) },
-  // Documents are uploaded through server actions; the app-level limit is 10 MB per file.
-  experimental: { serverActions: { bodySizeLimit: "12mb" } },
+  // Documents are uploaded through server actions. Vercel itself rejects bodies above 4.5 MB, so the app-level
+  // limit per file is 4 MB (lib/limits.ts) and this leaves room for the form fields around it.
+  experimental: { serverActions: { bodySizeLimit: "4.5mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

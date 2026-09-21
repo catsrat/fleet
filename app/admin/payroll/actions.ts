@@ -6,7 +6,8 @@ import { audit } from "@/lib/audit";
 import { sha256 } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { notify } from "@/lib/notify";
-import { KIND_LABEL, MAX_PAYSLIP_BYTES, isPayslipKind, periodLabel, validPeriod } from "@/lib/payslips";
+import { MAX_PAYSLIP_BYTES, MAX_UPLOAD_LABEL } from "@/lib/limits";
+import { KIND_LABEL, isPayslipKind, periodLabel, validPeriod } from "@/lib/payslips";
 import { requireAdmin } from "@/lib/session";
 import { deleteFile, putFile, sniffMime } from "@/lib/storage";
 
@@ -23,7 +24,7 @@ export async function uploadPayslip(fd: FormData): Promise<FormState> {
 
   if (!isPayslipKind(kind) || !validPeriod(kind, year, month)) return { error: "Choose a valid period (not in the future)." };
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a PDF file." };
-  if (file.size > MAX_PAYSLIP_BYTES) return { error: "File is too large (max 5 MB)." };
+  if (file.size > MAX_PAYSLIP_BYTES) return { error: `File is too large (max ${MAX_UPLOAD_LABEL}).` };
 
   const rider = await db.rider.findUnique({ where: { id: text(fd, "riderId") } });
   if (!rider) return { error: "Rider not found." };
