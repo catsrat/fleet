@@ -1,0 +1,241 @@
+// Nucleus Fleet data model.
+// Enum-like columns are plain strings (values live in lib/constants.ts) so the
+// schema is identical on SQLite (dev) and PostgreSQL (production).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  username      String?        @unique // staff sign-in ID, chosen by the owner
+  passwordHash  String
+  role          String         @default("RIDER") // RIDER | REVIEWER | ADMIN | OWNER
+  name          String
+  active        Boolean        @default(true)
+  locale        String         @default("en")
+  createdAt     DateTime       @default(now())
+  lastLoginAt   DateTime?
+  rider         Rider?
+  notifications Notification[]
+
+  // Set when someone else chose the password (temporary password); forces a change on next login.
+  mustChangePassword Boolean   @default(false)
+  emailVerifiedAt    DateTime?
+  googleSub          String?   @unique
+
+  // Two-factor authentication (TOTP). The secret is AES-GCM encrypted; recovery codes are stored as SHA-256 hashes.
+  totpSecretEnc String?
+  totpEnabledAt DateTime?
+  totpLastStep  Int?
+  recoveryCodes String?
+}
+
+model Rider {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Profile
+  firstName        String
+  lastName         String
+  phone            String?
+  dateOfBirth      DateTime?
+  city             String    @default("Berlin")
+  nationality      String?
+  nationalityGroup String    @default("EU") // EU (EU/EEA/CH) | NON_EU
+  university       String?
+  idType           String    @default("ID_CARD") // ID_CARD | PASSPORT
+  bikeMode         String    @default("FLEET_BIKE") // FLEET_BIKE | OWN_BIKE
+
+  // Payroll data. *Enc columns are AES-256-GCM encrypted (lib/crypto.ts).
+  taxIdEnc      String?
+  svNumberEnc   String?
+  svPending     Boolean @default(false)
+  ibanEnc       String?
+  healthInsurer String?
+
+  // Work-permission tracking (non-EU students: 140 full / 280 half days per year)
+  priorDaysWorked     Float     @default(0)
+  priorDaysDeclaredAt DateTime?
+  workAuthorization   String? // RESTRICTED_140 | UNRESTRICTED | NOT_PERMITTED (set by reviewer)
+  employmentType      String? // MINIJOB | WERKSTUDENT | SHORT_TERM
+
+  // Agreements
+  consentDataAt DateTime?
+  contractAckAt DateTime?
+  conductAckAt  DateTime?
+
+  // Pipeline
+  status              String    @default("DRAFT")
+  submittedAt         DateTime?
+  approvedAt          DateTime?
+  approvedByName      String?
+  activatedAt         DateTime?
+  internalNote        String?
+  deletionRequestedAt DateTime?
+  erasedAt            DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  documents   Document[]
+  workLogs    WorkLog[]
+  assignments BikeAssignment[]
+  payslips    Payslip[]
+  slots       AvailabilitySlot[]
+
+  @@index([status])
+}
+
+// Payslips (employees), earnings statements (self-employed couriers) and annual certificates.
+model Payslip {
+  id                String    @id @default(cuid())
+  riderId           String
+  rider             Rider     @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  kind              String    @default("PAYSLIP") // PAYSLIP | STATEMENT | ANNUAL
+  year              Int
+  month             Int // 1-12; 0 for annual documents
+  storageKey        String
+  originalName      String
+  sizeBytes         Int
+  sha256            String
+  note              String?
+  uploadedByName    String?
+  uploadedAt        DateTime  @default(now())
+  supersededAt      DateTime? // a corrected upload replaces this one; the old file is kept for retention
+  firstDownloadedAt DateTime?
+  downloadCount     Int       @default(0)
+
+  @@index([riderId, year, month])
+}
+
+// Recurring weekly availability, in Europe/Berlin local time. weekday: 1 = Monday … 7 = Sunday.
+model AvailabilitySlot {
+  id          String @id @default(cuid())
+  riderId     String
+  rider       Rider  @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  weekday     Int
+  startMinute Int
+  endMinute   Int
+
+  @@index([riderId])
+}
+
+model Document {
+  id             String    @id @default(cuid())
+  riderId        String
+  rider          Rider     @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  type           String
+  status         String    @default("PENDING_REVIEW") // PENDING_REVIEW | APPROVED | REJECTED | SUPERSEDED
+  storageKey     String
+  originalName   String
+  mimeType       String
+  sizeBytes      Int
+  sha256         String
+  uploadedAt     DateTime  @default(now())
+  expiresAt      DateTime?
+  reviewedAt     DateTime?
+  reviewedByName String?
+  rejectionCode  String?
+  rejectionNote  String?
+  checksJson     String?
+
+  @@index([riderId, type])
+  @@index([status])
+}
+
+model WorkLog {
+  id            String   @id @default(cuid())
+  riderId       String
+  rider         Rider    @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  date          DateTime // UTC midnight of the worked day
+  hours         Float
+  note          String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  @@unique([riderId, date])
+}
+
+model Bike {
+  id             String           @id @default(cuid())
+  code           String           @unique
+  make           String
+  model          String
+  frameNumber    String           @unique
+  batterySerial  String?
+  motorWatts     Int              @default(250)
+  maxAssistKmh   Int              @default(25)
+  status         String           @default("AVAILABLE") // AVAILABLE | ASSIGNED | MAINTENANCE | RETIRED
+  purchaseDate   DateTime?
+  insuranceUntil DateTime?
+  nextServiceDue DateTime?
+  notes          String?
+  createdAt      DateTime         @default(now())
+  assignments    BikeAssignment[]
+  maintenance    MaintenanceLog[]
+}
+
+model BikeAssignment {
+  id           String    @id @default(cuid())
+  bikeId       String
+  bike         Bike      @relation(fields: [bikeId], references: [id], onDelete: Cascade)
+  riderId      String
+  rider        Rider     @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  assignedAt   DateTime  @default(now())
+  returnedAt   DateTime?
+  conditionOut String?
+  conditionIn  String?
+  depositCents Int?
+
+  @@index([bikeId])
+  @@index([riderId])
+}
+
+model MaintenanceLog {
+  id            String   @id @default(cuid())
+  bikeId        String
+  bike          Bike     @relation(fields: [bikeId], references: [id], onDelete: Cascade)
+  date          DateTime
+  kind          String // SERVICE | REPAIR | BATTERY | INSPECTION | INCIDENT
+  costCents     Int?
+  note          String?
+  createdByName String?
+  createdAt     DateTime @default(now())
+
+  @@index([bikeId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  at         DateTime @default(now())
+  actorId    String?
+  actorName  String?
+  action     String
+  entityType String
+  entityId   String
+  riderId    String?
+  meta       String?
+
+  @@index([riderId])
+  @@index([at])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String    @default("INFO") // INFO | SUCCESS | ACTION
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
