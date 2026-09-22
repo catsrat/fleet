@@ -28,15 +28,10 @@ The app runs on Vercel with a hosted PostgreSQL and a **private** Vercel Blob st
 1. Import this repository in Vercel (**Add New → Project**). `vercel.json` pins the functions to **Frankfurt (fra1)** and uses `scripts/vercel-build.mjs` as the build command; `package.json` pins Node 22.
 2. **Storage → Create → Neon** (Postgres), region **Frankfurt (aws-eu-central-1)**, and connect it to the project. This sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
 3. **Storage → Create → Blob**, access **Private** (it cannot be changed later), region **Frankfurt**, and connect it to the project. This sets `BLOB_STORE_ID`; authentication uses short-lived OIDC tokens, so no long-lived secret exists.
-4. **Settings → Environment Variables** (Production): set `SESSION_SECRET` and `FIELD_ENCRYPTION_KEY` to freshly generated values (never reuse your local ones), and `APP_URL` to your production address. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` if you want Google sign-in. Leave `STAFF_2FA` unset.
+4. **Settings → Environment Variables** (Production): set `SESSION_SECRET` and `FIELD_ENCRYPTION_KEY` to freshly generated values (never reuse your local ones), `APP_URL` to your production address, and `SETUP_TOKEN` to a long random string you keep — it is what lets you create the first administrator at `/setup`. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` if you want Google sign-in. Leave `STAFF_2FA` unset.
    **Back up `FIELD_ENCRYPTION_KEY` in a password manager.** It encrypts every document and payroll field; if it is lost, that data cannot be recovered.
 5. Deploy. Production builds apply pending database migrations automatically; preview branches never touch the production database.
-6. Create your owner login against the production database, from your own machine:
-   ```bash
-   vercel env pull .env.production.local
-   node --env-file=.env.production.local --import tsx scripts/owner-setup.ts
-   ```
-   Then sign in at `/staff/login`. Do **not** run `seed:demo` in production.
+6. Open **`/setup`** on the deployed site, enter your `SETUP_TOKEN` and choose your administrator ID and password. Then sign in at `/staff/login` and set up an authenticator app. The setup page closes itself permanently afterwards. Do **not** run `seed:demo` against production — it refuses non-local databases anyway.
 
 Limits to know: Vercel rejects request bodies above 4.5 MB, so each uploaded document or payslip may be at most **4 MB** (phone photos are downscaled in the browser first). Rate limiting is stored in the database, so it holds across serverless instances. The Hobby plan is for non-commercial use only; a company should use a Pro team.
 
@@ -46,7 +41,11 @@ npm 11.17+ blocks install scripts by default; this repo approves only the three 
 
 ## Your admin login (owner)
 
-`npm run owner:setup` asks for your name, an **admin ID** (what you type to sign in), email and password (typed hidden, never stored in `.env` or shell history). It creates the one **OWNER** account and deactivates the demo staff accounts. The owner can only be created or changed this way, never through the website, so nobody can claim it by visiting a URL.
+**In the browser (deployed sites):** set `SETUP_TOKEN` to a long random string, then open `/setup` and enter that code with your name, sign-in ID, email and password. Three independent gates protect it: the page does nothing unless `SETUP_TOKEN` is configured, the caller must know it, and it refuses once any staff account exists — so it closes permanently after first use.
+
+**From the command line (local):** `npm run owner:setup` asks the same questions with the password typed hidden, never stored in `.env` or shell history, and deactivates the demo staff accounts.
+
+> **Windows:** keep the project in a short path such as `C:\nucleus-fleet`. Deeply nested folders exceed Windows' 260-character path limit, which breaks `esbuild` (used by `npm test` and the seed script) with a confusing `ENOENT` error.
 
 - Sign in at `/staff/login` with your ID (or email) and password. On first sign-in you scan a QR code with an authenticator app and receive 8 one-time recovery codes.
 - Lost the phone and the recovery codes? Run `npm run owner:setup -- --reset-2fa` on the server.

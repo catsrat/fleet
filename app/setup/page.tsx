@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ActionForm } from "@/components/ActionForm";
-import { Logo } from "@/components/Logo";
 import { MIN_RIDER_AGE } from "@/lib/constants";
 import { ownerExists, setupEnabled } from "@/lib/setup";
 import { createOwner } from "./actions";
