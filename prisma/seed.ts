@@ -316,7 +316,20 @@ async function seedDemo(reviewer: { id: string; name: string }) {
   console.log(`  created ${RIDERS.length} demo riders and ${BIKES.length} e-bikes (rider password: Rider#Demo2026x)`);
 }
 
+/** Demo data must never reach a hosted database: the passwords are published in the README. */
+function refuseRemoteDatabase() {
+  const url = process.env.DATABASE_URL ?? "";
+  const host = /^postgres(ql)?:\/\/[^@]*@([^/:?]+)/.exec(url)?.[2] ?? "";
+  const local = /^(localhost|127\.0\.0\.1|::1|db)$/.test(host);
+  if (process.env.VERCEL || (host && !local)) {
+    console.error(`\nRefusing to seed demo data into a non-local database (host: ${host || "unknown"}).`);
+    console.error("Demo logins are published in the README; seeding them into production would be a security hole.\n");
+    process.exit(1);
+  }
+}
+
 async function main() {
+  refuseRemoteDatabase();
   if (!process.argv.includes("--demo")) {
     console.log("Nothing to seed. Create your real login with `npm run owner:setup`; use `npm run seed:demo` for sample data.");
     return;
