@@ -28,6 +28,7 @@ model User {
   lastLoginAt   DateTime?
   rider         Rider?
   notifications Notification[]
+  resetTokens   PasswordResetToken[]
 
   // Set when someone else chose the password (temporary password); forces a change on next login.
   mustChangePassword Boolean   @default(false)
@@ -93,6 +94,7 @@ model Rider {
   assignments BikeAssignment[]
   payslips    Payslip[]
   slots       AvailabilitySlot[]
+  contracts   Contract[]
 
   @@index([status])
 }
@@ -229,6 +231,41 @@ model AuditLog {
 
   @@index([riderId])
   @@index([at])
+}
+
+// Single-use password reset links. Only the SHA-256 hash of the token is stored, so a database leak
+// does not let anyone reset an account.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Employment contract issued to a rider: a PDF generated from their own details, stored encrypted like
+// every other document, and acknowledged in the portal.
+model Contract {
+  id             String    @id @default(cuid())
+  riderId        String
+  rider          Rider     @relation(fields: [riderId], references: [id], onDelete: Cascade)
+  version        Int       @default(1)
+  employmentType String
+  storageKey     String
+  sha256         String
+  sizeBytes      Int
+  generatedByName String?
+  generatedAt    DateTime  @default(now())
+  acknowledgedAt DateTime?
+  acknowledgedIp String?
+  supersededAt   DateTime?
+
+  @@index([riderId])
 }
 
 // Fixed-window counters for login, two-factor, upload and sign-up throttling. Kept in the database

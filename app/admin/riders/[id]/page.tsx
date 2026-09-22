@@ -15,7 +15,7 @@ import { KIND_LABEL, isPayslipKind, periodLabel } from "@/lib/payslips";
 import { approvalBlockers, daysUntil, docState, evaluate, fullName, currentDocs } from "@/lib/rider";
 import { isAdminRole } from "@/lib/roles";
 import { requireStaff } from "@/lib/session";
-import { ageOn } from "@/lib/validators";
+import { ageOn, toDateInput } from "@/lib/validators";
 import {
   approveRider,
   deleteWorkLog,
@@ -29,6 +29,7 @@ import {
   setWorkAuthorization,
 } from "../../actions";
 import { assignBike, returnBike } from "../../bikes/actions";
+import { issueContract } from "../../contracts/actions";
 
 export const metadata: Metadata = { title: "Rider" };
 
@@ -80,13 +81,14 @@ export default async function RiderDetailPage({ params }: { params: Promise<{ id
 
   const year = new Date().getUTCFullYear();
   const { start, end } = yearBounds(year);
-  const [yearLogs, timeline, freeBikes, slots, payslips] = await Promise.all([
+  const [yearLogs, timeline, freeBikes, slots, payslips, contract] = await Promise.all([
     db.workLog.findMany({ where: { riderId: id, date: { gte: start, lt: end } }, orderBy: { date: "desc" } }),
     db.auditLog.findMany({ where: { riderId: id, action: { not: "DOCUMENT_VIEWED" } }, orderBy: { at: "desc" }, take: 25 }),
     db.bike.findMany({ where: { status: "AVAILABLE" }, orderBy: { code: "asc" } }),
     db.availabilitySlot.findMany({ where: { riderId: id }, orderBy: [{ weekday: "asc" }, { startMinute: "asc" }] }),
     // reviewers never see payslips, so they are not even loaded for them
     isAdmin ? db.payslip.findMany({ where: { riderId: id, supersededAt: null }, orderBy: [{ year: "desc" }, { month: "desc" }], take: 24 }) : Promise.resolve([]),
+    isAdmin ? db.contract.findFirst({ where: { riderId: id, supersededAt: null }, orderBy: { generatedAt: "desc" } }) : Promise.resolve(null),
   ]);
 
   const ev = evaluate(rider, rider.documents);
@@ -316,6 +318,46 @@ export default async function RiderDetailPage({ params }: { params: Promise<{ id
                   ))}
                 </ul>
               )}
+            </Card>
+          )}
+
+          {isAdmin && reached && (
+            <Card title="Employment contract">
+              {contract ? (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3">
+                  <div className="text-sm">
+                    <a href={`/api/contracts/${contract.id}`} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">
+                      Version {contract.version} · {EMPLOYMENT_TYPES[contract.employmentType as keyof typeof EMPLOYMENT_TYPES] ?? contract.employmentType}
+                    </a>
+                    <p className="text-xs text-slate-500">Issued {fmtDay(contract.generatedAt)}{contract.generatedByName ? ` by ${contract.generatedByName}` : ""}</p>
+                  </div>
+                  <span className={`chip ${contract.acknowledgedAt ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
+                    {contract.acknowledgedAt ? `Accepted ${fmtDay(contract.acknowledgedAt)}` : "Awaiting acceptance"}
+                  </span>
+                </div>
+              ) : (
+                <p className="mb-4 text-sm text-slate-500">No contract issued yet.</p>
+              )}
+              <ActionForm action={issueContract} submit={contract ? "Issue a new version" : "Issue contract"} pendingLabel="Generating…" buttonClass="btn btn-secondary btn-sm" className="space-y-3">
+                <input type="hidden" name="riderId" value={rider.id} />
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div>
+                    <label className="label" htmlFor="cet">Employment type</label>
+                    <select id="cet" name="employmentType" defaultValue={rider.employmentType ?? "WERKSTUDENT"} className="input">
+                      {Object.entries(EMPLOYMENT_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="cstart">Start date</label>
+                    <input id="cstart" name="startDate" type="date" defaultValue={toDateInput(rider.activatedAt ?? rider.approvedAt ?? new Date())} className="input" required />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="chourly">Hourly rate (€)</label>
+                    <input id="chourly" name="hourly" inputMode="decimal" placeholder="optional" className="input" />
+                  </div>
+                </div>
+                <p className="help">Generates a PDF from the rider&apos;s own details and publishes it to their portal. The wording lives in <code>lib/contract.ts</code> and must be reviewed by a lawyer before real use.</p>
+              </ActionForm>
             </Card>
           )}
 

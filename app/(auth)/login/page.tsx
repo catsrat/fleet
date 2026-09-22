@@ -11,18 +11,21 @@ import { login } from "../actions";
 
 export const metadata: Metadata = { title: "Log in" };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; reset?: string }> }) {
   const user = await getSessionUser();
   if (user) redirect(homeFor(user.role));
   const locale = await getLocale();
   const d = t(locale);
-  const { error } = await searchParams;
+  const { error, reset } = await searchParams;
 
   return (
     <div className="card p-6 sm:p-8">
       <h1 className="text-2xl font-bold tracking-tight">{d.auth.loginTitle}</h1>
       {error === "google" && (
         <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">{d.auth.googleError}</p>
+      )}
+      {reset === "1" && (
+        <p className="mt-4 rounded-lg bg-brand-50 px-4 py-3 text-sm font-medium text-brand-800">{d.auth.resetDone}</p>
       )}
       <div className="mt-6">
         {isGoogleConfigured() && <GoogleButton label={d.auth.google} divider={d.auth.or} />}
@@ -37,7 +40,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </div>
         </ActionForm>
       </div>
-      <p className="mt-6 text-center text-sm text-slate-600">
+      <p className="mt-4 text-center text-sm">
+        <Link href="/forgot" className="font-medium text-slate-600 hover:text-slate-900 hover:underline">{d.auth.forgotLink}</Link>
+      </p>
+      <p className="mt-4 text-center text-sm text-slate-600">
         {d.auth.noAccount}{" "}
         <Link href="/register" className="font-semibold text-brand-700 hover:underline">
           {d.nav.register}

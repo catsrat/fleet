@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ActionForm } from "@/components/ActionForm";
 import { isStaffRole } from "@/lib/roles";
@@ -7,10 +8,10 @@ import { staffLogin } from "../actions";
 
 export const metadata: Metadata = { title: "Staff sign-in", robots: { index: false, follow: false } };
 
-export default async function StaffLoginPage({ searchParams }: { searchParams: Promise<{ created?: string }> }) {
+export default async function StaffLoginPage({ searchParams }: { searchParams: Promise<{ created?: string; reset?: string }> }) {
   const user = await getSessionUser();
   if (user && isStaffRole(user.role)) redirect("/admin");
-  const { created } = await searchParams;
+  const { created, reset } = await searchParams;
 
   return (
     <div className="card p-6 sm:p-8">
@@ -19,6 +20,11 @@ export default async function StaffLoginPage({ searchParams }: { searchParams: P
       {created === "1" && (
         <p className="mt-4 rounded-lg bg-brand-50 px-4 py-3 text-sm font-medium text-brand-800">
           Administrator account created. Sign in below — you&apos;ll set up your authenticator app next.
+        </p>
+      )}
+      {reset === "1" && (
+        <p className="mt-4 rounded-lg bg-brand-50 px-4 py-3 text-sm font-medium text-brand-800">
+          Password changed. Sign in with your new password.
         </p>
       )}
       <ActionForm action={staffLogin} submit="Continue" pendingLabel="Checking…" className="mt-6 space-y-4" buttonClass="btn btn-primary w-full">
@@ -31,6 +37,9 @@ export default async function StaffLoginPage({ searchParams }: { searchParams: P
           <input id="password" name="password" type="password" autoComplete="current-password" required className="input" />
         </div>
       </ActionForm>
+      <p className="mt-4 text-center text-sm">
+        <Link href="/forgot" className="font-medium text-slate-600 hover:text-slate-900 hover:underline">Forgot your password?</Link>
+      </p>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { OAUTH_COOKIE, exchangeCode, googleConfig, oauthCookieOptions, openOAuth
 import { resolveGoogleUser } from "@/lib/google-account";
 import { LOCALE_COOKIE } from "@/lib/locale";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
+import { reportError } from "@/lib/report";
 import { createSession } from "@/lib/session";
 
 /** Step 2: Google sends the rider back with a one-time code. Every failure ends at the login page with no detail. */
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest): Promise<Response> {
     res.cookies.set(OAUTH_COOKIE, "", { ...oauthCookieOptions(), maxAge: 0 });
     return res;
   } catch (err) {
-    console.error("Google sign-in failed:", err instanceof Error ? err.message : err);
+    reportError(err, { where: "auth/google/callback" });
     return fail();
   }
 }

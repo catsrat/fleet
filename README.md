@@ -2,9 +2,11 @@
 
 Rider onboarding and fleet back-office for a German Uber Eats fleet partner that employs student couriers on e-bikes.
 
-- **Rider portal** (`/apply`, English + German): guided document checklist, phone-camera uploads, per-document status and rejection reasons, **payslips**, weekly **availability**, "Continue with Google".
-- **Back-office** (`/admin`): review queue, document viewer with per-document checklists, Uber activation pipeline, work-day compliance, **schedule and coverage**, e-bike fleet, **payroll documents**, audit log, team management, CSV exports.
+- **Rider portal** (`/apply`, English + German): guided document checklist, phone-camera uploads, per-document status and rejection reasons, **employment contract**, **payslips**, weekly **availability**, "Continue with Google".
+- **Back-office** (`/admin`): review queue, document viewer with per-document checklists, Uber activation pipeline, work-day compliance, **schedule and coverage**, e-bike fleet, **payroll documents**, **contract generation**, audit log, team management, CSV exports.
 - **Staff sign-in** (`/staff/login`): separate from the rider login, password plus authenticator app.
+- **Email**: rejections, approvals, contracts and payslips reach riders by email, and both riders and staff can reset their own password.
+- **Automatic clean-up**: a nightly job erases rejected applicants' files after the retention period, keeping the record and audit trail.
 
 ## Run it locally
 
@@ -30,10 +32,33 @@ The app runs on Vercel with a hosted PostgreSQL and a **private** Vercel Blob st
 3. **Storage → Create → Blob**, access **Private** (it cannot be changed later), region **Frankfurt**, and connect it to the project. This sets `BLOB_STORE_ID`; authentication uses short-lived OIDC tokens, so no long-lived secret exists.
 4. **Settings → Environment Variables** (Production): set `SESSION_SECRET` and `FIELD_ENCRYPTION_KEY` to freshly generated values (never reuse your local ones), `APP_URL` to your production address, and `SETUP_TOKEN` to a long random string you keep — it is what lets you create the first administrator at `/setup`. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` if you want Google sign-in. Leave `STAFF_2FA` unset.
    **Back up `FIELD_ENCRYPTION_KEY` in a password manager.** It encrypts every document and payroll field; if it is lost, that data cannot be recovered.
-5. Deploy. Production builds apply pending database migrations automatically; preview branches never touch the production database.
-6. Open **`/setup`** on the deployed site, enter your `SETUP_TOKEN` and choose your administrator ID and password. Then sign in at `/staff/login` and set up an authenticator app. The setup page closes itself permanently afterwards. Do **not** run `seed:demo` against production — it refuses non-local databases anyway.
+5. Add `CRON_SECRET` (any long random string) so the nightly clean-up can run, and `RESEND_API_KEY` plus `EMAIL_FROM` to turn on email — see below.
+6. Deploy. Production builds apply pending database migrations automatically; preview branches never touch the production database.
+7. Open **`/setup`** on the deployed site, enter your `SETUP_TOKEN` and choose your administrator ID and password. Then sign in at `/staff/login` and set up an authenticator app. The setup page closes itself permanently afterwards. Do **not** run `seed:demo` against production — it refuses non-local databases anyway.
 
 Limits to know: Vercel rejects request bodies above 4.5 MB, so each uploaded document or payslip may be at most **4 MB** (phone photos are downscaled in the browser first). Rate limiting is stored in the database, so it holds across serverless instances. The Hobby plan is for non-commercial use only; a company should use a Pro team.
+
+## Email
+
+Riders are told by email when a document is rejected, when they are approved, when a contract or payslip is ready, and when staff message them. Both riders and staff can reset their own password from the sign-in page.
+
+Set up: create an account at [resend.com](https://resend.com), verify the domain you will send from, create an API key, then set `RESEND_API_KEY` and `EMAIL_FROM` (for example `Nucleus Fleet <riders@yourdomain.de>`). Without a key nothing breaks — messages are written to the log instead of sent, and the in-app notifications still appear.
+
+Reset links last one hour and work once. Asking for a reset never reveals whether an address has an account.
+
+## Nightly clean-up
+
+`vercel.json` schedules `/api/cron/retention` at 03:30 UTC. It erases the uploaded files of applicants who were rejected more than `RETENTION_DAYS` days ago (default 180), keeping their record and the audit entry as proof the decision was handled. Riders who actually worked are never touched: residence-permit copies must be kept for the duration of employment (§ 4a AufenthG) and payroll records for the statutory periods. It also clears expired reset tokens, old notifications and stale rate-limit rows. The route returns 401 unless `CRON_SECRET` is set and sent as a bearer token.
+
+## Employment contracts
+
+An admin issues a contract from the rider's page: pick the employment type, start date and hourly rate, and the app generates a German PDF from the rider's own details, stores it encrypted, and notifies them. The rider opens it under **Contract**, downloads a copy and confirms acceptance; the date, time and account are recorded. Issuing again supersedes the previous version and asks for a fresh confirmation.
+
+> The contract wording in `lib/contract.ts` is a **starting point, not legal advice**, and prints a visible draft warning. Have a German employment lawyer review and replace it before issuing it to anyone; then edit that one file.
+
+## When something breaks
+
+Errors are written to the platform log as a single JSON line (searchable in Vercel's log view) with the location, the deployment and the affected user. Set `ERROR_WEBHOOK_URL` to a Slack or Discord incoming webhook to also get a message; repeats of the same error are throttled to one a minute. Riders see a plain error page with a reference code that matches the log entry.
 
 Optional sample data (local only): `npm run seed:demo` adds demo staff (`demo-admin` / `DemoAdmin#2026x`, `demo-reviewer` / `DemoReviewer#2026x`), 8 riders in every pipeline state, 6 e-bikes, payslips and availability. Demo riders sign in with `<first>.<last>@example.com` / `Rider#Demo2026x`. **These passwords are published in this repository; never seed demo data on a real deployment.**
 
@@ -83,7 +108,7 @@ Uber's rules, mirrored in the review checklists: photograph the **original** (no
 
 ## Tests
 
-`npm test` runs 29 tests: the TOTP code against the RFC 6238 vectors, Google ID-token verification (forged signature, `alg=none`, wrong audience or issuer, expiry, nonce replay, unverified email), PKCE, availability rules (rest periods, daylight saving), and the German tax ID, social security and IBAN checksums.
+`npm test` runs 38 tests: the TOTP code against the RFC 6238 vectors, Google ID-token verification (forged signature, `alg=none`, wrong audience or issuer, expiry, nonce replay, unverified email), PKCE, availability rules (rest periods, daylight saving), the German tax ID, social security and IBAN checksums, the PDF writer (structure, xref offsets, escaping, German characters, page flow) and the email templates.
 
 ## Before production
 

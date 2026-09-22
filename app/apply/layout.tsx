@@ -12,10 +12,14 @@ import { requireRider } from "@/lib/session";
 export default async function ApplyLayout({ children }: { children: React.ReactNode }) {
   const user = await requireRider();
   const d = t(await getLocale());
-  const payslips = await db.payslip.count({ where: { riderId: user.rider.id, supersededAt: null } });
+  const [payslips, contracts] = await Promise.all([
+    db.payslip.count({ where: { riderId: user.rider.id, supersededAt: null } }),
+    db.contract.count({ where: { riderId: user.rider.id, supersededAt: null } }),
+  ]);
 
   const tabs = [
     { href: "/apply", label: d.nav.application },
+    ...(contracts > 0 ? [{ href: "/apply/contract", label: d.nav.contract }] : []),
     ...(payslips > 0 || user.rider.activatedAt ? [{ href: "/apply/payslips", label: d.nav.payslips }] : []),
     ...(CAN_SET_AVAILABILITY.includes(user.rider.status) ? [{ href: "/apply/availability", label: d.nav.availability }] : []),
   ];
