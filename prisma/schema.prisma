@@ -57,7 +57,7 @@ model Rider {
   nationalityGroup String    @default("EU") // EU (EU/EEA/CH) | NON_EU
   university       String?
   idType           String    @default("ID_CARD") // ID_CARD | PASSPORT
-  bikeMode         String    @default("FLEET_BIKE") // FLEET_BIKE | OWN_BIKE
+  bikeMode         String    @default("OWN_BIKE")  // FLEET_BIKE | OWN_BIKE
 
   // Payroll data. *Enc columns are AES-256-GCM encrypted (lib/crypto.ts).
   taxIdEnc      String?

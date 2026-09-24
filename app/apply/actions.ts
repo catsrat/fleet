@@ -139,7 +139,7 @@ export async function savePayroll(fd: FormData): Promise<FormState> {
 export async function saveBike(fd: FormData): Promise<FormState> {
   const { rider, locale, actor } = await ctx();
   if (!EDITABLE.includes(rider.status)) return lockedError(locale);
-  const bikeMode = text(fd, "bikeMode") === "OWN_BIKE" ? "OWN_BIKE" : "FLEET_BIKE";
+  const bikeMode = text(fd, "bikeMode") === "FLEET_BIKE" ? "FLEET_BIKE" : "OWN_BIKE";
   await db.rider.update({ where: { id: rider.id }, data: { bikeMode } });
   await audit({ actor, action: "BIKE_MODE_SET", entityType: "Rider", entityId: rider.id, riderId: rider.id, meta: { bikeMode } });
   revalidatePath("/apply");

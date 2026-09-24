@@ -319,8 +319,8 @@ export default async function ApplyPage() {
             <ActionForm action={saveBike} submit={d.apply.bike.save} pendingLabel="…" className="space-y-3" buttonClass="btn btn-secondary btn-sm">
               <p className="text-sm text-slate-600">{d.apply.bike.intro}</p>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Radio name="bikeMode" value="FLEET_BIKE" defaultChecked={rider.bikeMode === "FLEET_BIKE"} title={d.apply.bike.fleet} help={d.apply.bike.fleetHelp} />
                 <Radio name="bikeMode" value="OWN_BIKE" defaultChecked={rider.bikeMode === "OWN_BIKE"} title={d.apply.bike.own} help={d.apply.bike.ownHelp} />
+                <Radio name="bikeMode" value="FLEET_BIKE" defaultChecked={rider.bikeMode === "FLEET_BIKE"} title={d.apply.bike.fleet} help={d.apply.bike.fleetHelp} />
               </div>
             </ActionForm>
           ) : (
