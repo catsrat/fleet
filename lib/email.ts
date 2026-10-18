@@ -44,13 +44,13 @@ function renderHtml(m: EmailMessage): string {
     <h1 style="margin:0 0 16px;font-size:20px;line-height:1.35;color:#0b1220">${escapeHtml(m.heading)}</h1>
     ${body}${button}${footnote}
     <p style="margin:26px 0 0;padding-top:18px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
-      ${escapeHtml(COMPANY.legalName)} · <a href="mailto:${COMPANY.supportEmail}" style="color:#0b8a7e">${COMPANY.supportEmail}</a>
+      ${escapeHtml(COMPANY.employer.legalName)} · <a href="mailto:${COMPANY.supportEmail}" style="color:#0b8a7e">${COMPANY.supportEmail}</a>
     </p>
   </td></tr></table></body></html>`;
 }
 
 const renderText = (m: EmailMessage): string =>
-  [m.heading, "", ...m.lines, m.action ? `\n${m.action.label}: ${m.action.url}` : "", m.footnote ? `\n${m.footnote}` : "", `\n— ${COMPANY.legalName} · ${COMPANY.supportEmail}`]
+  [m.heading, "", ...m.lines, m.action ? `\n${m.action.label}: ${m.action.url}` : "", m.footnote ? `\n${m.footnote}` : "", `\n— ${COMPANY.employer.legalName} · ${COMPANY.supportEmail}`]
     .filter((p) => p !== "")
     .join("\n");
 

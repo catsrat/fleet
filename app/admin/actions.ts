@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { createContract, readContractTerms } from "@/lib/contract-issue";
 import type { FormState } from "@/components/ActionForm";
 import { audit } from "@/lib/audit";
-import { EMPLOYMENT_TYPES, WORK_AUTH, type EmploymentType, type WorkAuth } from "@/lib/constants";
+import { WORK_AUTH, type WorkAuth } from "@/lib/constants";
 import { decryptField } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { DOC_SPECS, REJECTION_REASONS, rejectionText, type DocType } from "@/lib/documents";
@@ -104,24 +105,31 @@ export async function approveRider(fd: FormData): Promise<FormState> {
   const rider = await db.rider.findUnique({ where: { id: text(fd, "riderId") }, include: { documents: true } });
   if (!rider) return { error: "Rider not found." };
   if (!["SUBMITTED", "IN_REVIEW", "CHANGES_REQUESTED"].includes(rider.status)) return { error: "This applicant is not awaiting approval." };
-  const employmentType = text(fd, "employmentType") as EmploymentType;
-  if (!(employmentType in EMPLOYMENT_TYPES)) return { error: "Choose the employment type." };
+
+  // Approval issues the contract straight away, so the employment terms have to be settled here.
+  const terms = readContractTerms(fd, rider.employmentType);
+  if ("error" in terms) return terms;
 
   const blockers = approvalBlockers(rider, rider.documents);
   if (blockers.length) return { error: `Cannot approve yet: ${blockers.join("; ")}.` };
 
-  await db.rider.update({ where: { id: rider.id }, data: { status: "APPROVED", approvedAt: new Date(), approvedByName: actor.name, employmentType } });
+  const approved = await db.rider.update({
+    where: { id: rider.id },
+    data: { status: "APPROVED", approvedAt: new Date(), approvedByName: actor.name, employmentType: terms.employmentType },
+  });
   await notify(rider.userId, {
     kind: "SUCCESS",
     title: { en: "You're approved!", de: "Du bist freigegeben!" },
     body: {
-      en: "All your documents are verified. We'll send you the instructions to activate your Uber Eats courier account.",
-      de: "Alle deine Dokumente sind geprüft. Wir schicken dir die Anleitung zur Aktivierung deines Uber-Eats-Kurierkontos.",
+      en: "All your documents are verified. Your employment contract is ready to sign in your account.",
+      de: "Alle deine Dokumente sind geprüft. Dein Arbeitsvertrag liegt in deinem Konto zur Unterschrift bereit.",
     },
   });
-  await audit({ actor, action: "RIDER_APPROVED", entityType: "Rider", entityId: rider.id, riderId: rider.id, meta: { employmentType } });
+  await audit({ actor, action: "RIDER_APPROVED", entityType: "Rider", entityId: rider.id, riderId: rider.id, meta: { employmentType: terms.employmentType } });
+
+  await createContract({ rider: approved, ...terms, actor });
   revalidatePath("/admin", "layout");
-  return { ok: true, message: "Approved." };
+  return { ok: true, message: "Approved, and the contract has been issued for signature." };
 }
 
 const TRANSITIONS: Record<string, string[]> = {

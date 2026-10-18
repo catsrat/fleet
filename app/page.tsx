@@ -160,7 +160,7 @@ export default async function LandingPage() {
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-sm text-slate-500">
-          <span>© {new Date().getFullYear()} {COMPANY.legalName}</span>
+          <span>© {new Date().getFullYear()} {COMPANY.employer.legalName}</span>
           <div className="flex gap-5">
             <Link href="/privacy" className="hover:text-slate-900">{d.nav.privacy}</Link>
             <a href={`mailto:${COMPANY.supportEmail}`} className="hover:text-slate-900">{COMPANY.supportEmail}</a>

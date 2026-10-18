@@ -1,8 +1,22 @@
 export const COMPANY = {
+  /** Trading name, used throughout the portal. */
   name: "Nucleus Fleet",
-  legalName: "Nucleus Fleet GmbH",
   supportEmail: "riders@nucleusfleet.de",
+  /**
+   * The legal entity that employs the riders — what belongs on contracts and payslips.
+   * It must be the registered name including the legal form (GmbH, UG (haftungsbeschränkt), e.K. …)
+   * together with the registered address: § 2 Nachweisgesetz requires both in writing, and since
+   * August 2022 omitting them is a fineable offence. Anything left blank prints a visible gap.
+   */
+  employer: {
+    legalName: "Nucleus Tech",
+    addressLines: [] as readonly string[],
+  },
 } as const;
+
+/** False while the employer name or address is still missing, which the contract page warns about. */
+export const employerDetailsComplete = (): boolean =>
+  COMPANY.employer.legalName.trim().length > 0 && COMPANY.employer.addressLines.length > 0;
 
 export const RIDER_STATUSES = [
   "DRAFT",

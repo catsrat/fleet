@@ -265,6 +265,17 @@ model Contract {
   acknowledgedIp String?
   supersededAt   DateTime?
 
+  // The signed round trip: the rider uploads the copy they signed, then we upload the countersigned one.
+  riderSignedKey         String?
+  riderSignedAt          DateTime?
+  riderSignedSha256      String?
+  riderSignedSizeBytes   Int?
+  countersignedKey       String?
+  countersignedAt        DateTime?
+  countersignedSha256    String?
+  countersignedSizeBytes Int?
+  countersignedByName    String?
+
   @@index([riderId])
 }
 

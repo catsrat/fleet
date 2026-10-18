@@ -3,14 +3,14 @@
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/components/ActionForm";
 import { audit } from "@/lib/audit";
-import { EMPLOYMENT_TYPES, type EmploymentType } from "@/lib/constants";
-import { CONTRACT_VERSION, buildContractPdf } from "@/lib/contract";
+import { contractStage } from "@/lib/contract-stage";
+import { createContract, readContractTerms } from "@/lib/contract-issue";
 import { sha256 } from "@/lib/crypto";
 import { db } from "@/lib/db";
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from "@/lib/limits";
 import { notify } from "@/lib/notify";
 import { requireAdmin } from "@/lib/session";
-import { putFile } from "@/lib/storage";
-import { parseDateInput } from "@/lib/validators";
+import { putFile, sniffMime } from "@/lib/storage";
 
 const text = (fd: FormData, name: string) => String(fd.get(name) ?? "").trim();
 
@@ -23,42 +23,51 @@ export async function issueContract(fd: FormData): Promise<FormState> {
     return { error: "Issue the contract once the rider is approved." };
   }
 
-  const employmentType = (text(fd, "employmentType") || rider.employmentType) as EmploymentType;
-  if (!employmentType || !(employmentType in EMPLOYMENT_TYPES)) return { error: "Choose the employment type." };
+  const terms = readContractTerms(fd, rider.employmentType);
+  if ("error" in terms) return terms;
 
-  const startDate = parseDateInput(fd.get("startDate"));
-  if (!startDate) return { error: "Choose the start date." };
+  const { reissued } = await createContract({ rider, ...terms, actor: { id: admin.id, name: admin.name } });
+  revalidatePath(`/admin/riders/${rider.id}`);
+  return { ok: true, message: reissued ? "New version issued. The rider has to sign it again." : "Contract issued." };
+}
 
-  const hourly = text(fd, "hourly").replace(",", ".");
-  let hourlyCents: number | null = null;
-  if (hourly) {
-    const value = Number(hourly);
-    if (!Number.isFinite(value) || value <= 0 || value > 200) return { error: "Enter an hourly rate between 0 and 200 euro, or leave it blank." };
-    hourlyCents = Math.round(value * 100);
-  }
+/** Uploads the copy we countersigned, which completes the contract and returns it to the rider. */
+export async function uploadCountersignedContract(fd: FormData): Promise<FormState> {
+  const admin = await requireAdmin();
+  const contract = await db.contract.findUnique({ where: { id: text(fd, "contractId") }, include: { rider: true } });
+  if (!contract) return { error: "Contract not found." };
+  if (contract.supersededAt) return { error: "This version has been superseded. Countersign the current one." };
+  if (contractStage(contract) === "ISSUED") return { error: "The rider has not uploaded their signed copy yet." };
 
-  const pdf = buildContractPdf({ rider, employmentType, startDate, hourlyCents });
-  const storageKey = await putFile(pdf);
-  const previous = await db.contract.count({ where: { riderId: rider.id, supersededAt: null } });
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose the countersigned PDF." };
+  if (file.size > MAX_UPLOAD_BYTES) return { error: `File is too large (max ${MAX_UPLOAD_LABEL}).` };
 
-  const contract = await db.$transaction(async (tx) => {
-    await tx.contract.updateMany({ where: { riderId: rider.id, supersededAt: null }, data: { supersededAt: new Date() } });
-    if (rider.employmentType !== employmentType) await tx.rider.update({ where: { id: rider.id }, data: { employmentType } });
-    return tx.contract.create({
-      data: { riderId: rider.id, version: CONTRACT_VERSION, employmentType, storageKey, sha256: sha256(pdf), sizeBytes: pdf.length, generatedByName: admin.name },
-    });
-  });
+  const buffer = Buffer.from(await file.arrayBuffer());
+  if (sniffMime(buffer) !== "application/pdf") return { error: "The countersigned contract has to be a PDF." };
 
-  await notify(rider.userId, {
-    kind: "ACTION",
-    path: "/apply/contract",
-    title: previous ? { en: "Your contract was updated", de: "Dein Vertrag wurde aktualisiert" } : { en: "Your employment contract is ready", de: "Dein Arbeitsvertrag liegt bereit" },
-    body: {
-      en: "Open it in your account, read it, and confirm to accept.",
-      de: "Öffne ihn in deinem Konto, lies ihn und bestätige ihn.",
+  const storageKey = await putFile(buffer);
+  await db.contract.update({
+    where: { id: contract.id },
+    data: {
+      countersignedKey: storageKey,
+      countersignedAt: new Date(),
+      countersignedSha256: sha256(buffer),
+      countersignedSizeBytes: buffer.length,
+      countersignedByName: admin.name,
     },
   });
-  await audit({ actor: { id: admin.id, name: admin.name }, action: previous ? "CONTRACT_REISSUED" : "CONTRACT_ISSUED", entityType: "Contract", entityId: contract.id, riderId: rider.id, meta: { employmentType } });
-  revalidatePath(`/admin/riders/${rider.id}`);
-  return { ok: true, message: previous ? "New version issued." : "Contract issued." };
+
+  await notify(contract.rider.userId, {
+    kind: "SUCCESS",
+    path: "/apply/contract",
+    title: { en: "Your signed contract is ready", de: "Dein unterschriebener Vertrag liegt bereit" },
+    body: {
+      en: "We countersigned your contract. Download your copy from your account and keep it.",
+      de: "Wir haben deinen Vertrag gegengezeichnet. Lade deine Ausfertigung in deinem Konto herunter und bewahre sie auf.",
+    },
+  });
+  await audit({ actor: { id: admin.id, name: admin.name }, action: "CONTRACT_COUNTERSIGNED", entityType: "Contract", entityId: contract.id, riderId: contract.riderId });
+  revalidatePath(`/admin/riders/${contract.riderId}`);
+  return { ok: true, message: "Countersigned copy uploaded. The rider has been told." };
 }

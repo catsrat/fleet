@@ -6,7 +6,8 @@ import { DocBadge, ProgressBar, StatusBadge } from "@/components/admin-ui";
 import { RevealPayroll } from "@/components/RevealPayroll";
 import { WEEKDAYS, formatMinute } from "@/lib/availability";
 import { dayStatus, eligibility, isoWeekKey, yearBounds } from "@/lib/compliance";
-import { EMPLOYMENT_TYPES, WERKSTUDENT_WEEKLY_HOURS, WORK_AUTH } from "@/lib/constants";
+import { EMPLOYMENT_TYPES, WERKSTUDENT_WEEKLY_HOURS, WORK_AUTH, employerDetailsComplete } from "@/lib/constants";
+import { contractStage } from "@/lib/contract-stage";
 import { decryptField, maskValue } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { DOC_SECTIONS, DOC_SPECS } from "@/lib/documents";
@@ -29,7 +30,7 @@ import {
   setWorkAuthorization,
 } from "../../actions";
 import { assignBike, returnBike } from "../../bikes/actions";
-import { issueContract } from "../../contracts/actions";
+import { issueContract, uploadCountersignedContract } from "../../contracts/actions";
 
 export const metadata: Metadata = { title: "Rider" };
 
@@ -93,6 +94,8 @@ export default async function RiderDetailPage({ params }: { params: Promise<{ id
 
   const ev = evaluate(rider, rider.documents);
   const cur = currentDocs(rider.documents);
+  const stage = contract ? contractStage(contract) : null;
+  const employerReady = employerDetailsComplete();
   const blockers = approvalBlockers(rider, rider.documents);
   const days = dayStatus(rider, yearLogs.map((l) => l.hours), year);
   const elig = eligibility(rider, rider.documents, days);
@@ -331,13 +334,46 @@ export default async function RiderDetailPage({ params }: { params: Promise<{ id
                     </a>
                     <p className="text-xs text-slate-500">Issued {fmtDay(contract.generatedAt)}{contract.generatedByName ? ` by ${contract.generatedByName}` : ""}</p>
                   </div>
-                  <span className={`chip ${contract.acknowledgedAt ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>
-                    {contract.acknowledgedAt ? `Accepted ${fmtDay(contract.acknowledgedAt)}` : "Awaiting acceptance"}
+                  <span className={`chip ${stage === "COMPLETE" ? "bg-emerald-100 text-emerald-800" : stage === "RIDER_SIGNED" ? "bg-sky-100 text-sky-800" : "bg-amber-100 text-amber-900"}`}>
+                    {stage === "COMPLETE"
+                      ? `Signed ${fmtDay(contract.countersignedAt!)}`
+                      : stage === "RIDER_SIGNED"
+                        ? "Awaiting your countersignature"
+                        : "Awaiting rider signature"}
                   </span>
                 </div>
               ) : (
                 <p className="mb-4 text-sm text-slate-500">No contract issued yet.</p>
               )}
+
+              {contract && stage !== "ISSUED" && (
+                <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-sm">
+                    <a href={`/api/contracts/${contract.id}?copy=signed`} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">
+                      Rider&apos;s signed copy
+                    </a>
+                    <span className="text-slate-500"> · uploaded {fmtDay(contract.riderSignedAt!)}</span>
+                  </p>
+                  {stage === "COMPLETE" ? (
+                    <p className="text-sm">
+                      <a href={`/api/contracts/${contract.id}?copy=countersigned`} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-700 hover:underline">
+                        Countersigned copy
+                      </a>
+                      <span className="text-slate-500">
+                        {" "}· uploaded {fmtDay(contract.countersignedAt!)}
+                        {contract.countersignedByName ? ` by ${contract.countersignedByName}` : ""}
+                      </span>
+                    </p>
+                  ) : (
+                    <ActionForm action={uploadCountersignedContract} submit="Upload countersigned copy" pendingLabel="Uploading…" buttonClass="btn btn-primary btn-sm" className="space-y-2">
+                      <input type="hidden" name="contractId" value={contract.id} />
+                      <input type="file" name="file" accept="application/pdf" required className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium" />
+                      <p className="help">Download the rider&apos;s copy, sign it, and upload it here. The rider is told and can download their executed copy.</p>
+                    </ActionForm>
+                  )}
+                </div>
+              )}
+
               <ActionForm action={issueContract} submit={contract ? "Issue a new version" : "Issue contract"} pendingLabel="Generating…" buttonClass="btn btn-secondary btn-sm" className="space-y-3">
                 <input type="hidden" name="riderId" value={rider.id} />
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -353,10 +389,10 @@ export default async function RiderDetailPage({ params }: { params: Promise<{ id
                   </div>
                   <div>
                     <label className="label" htmlFor="chourly">Hourly rate (€)</label>
-                    <input id="chourly" name="hourly" inputMode="decimal" placeholder="optional" className="input" />
+                    <input id="chourly" name="hourly" inputMode="decimal" placeholder="13,82" className="input" required />
                   </div>
                 </div>
-                <p className="help">Generates a PDF from the rider&apos;s own details and publishes it to their portal. The wording lives in <code>lib/contract.ts</code> and must be reviewed by a lawyer before real use.</p>
+                <p className="help">Generates a PDF from the rider&apos;s own details and publishes it to their portal. Issuing a new version supersedes the old one and asks the rider to sign again. The wording lives in <code>lib/contract.ts</code> and must be reviewed by a lawyer before real use.</p>
               </ActionForm>
             </Card>
           )}
@@ -393,6 +429,14 @@ export default async function RiderDetailPage({ params }: { params: Promise<{ id
 
           <Card title="Pipeline">
             <div className="space-y-3">
+              {!employerReady && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-sm font-semibold text-amber-900">Employer details missing</p>
+                  <p className="mt-1 text-sm leading-relaxed text-amber-900/80">
+                    Contracts cannot be issued — and therefore riders cannot be approved — until the registered company name and address are set in <code>lib/constants.ts</code>. § 2 NachwG requires both on the contract.
+                  </p>
+                </div>
+              )}
               {inReview && (
                 <>
                   {blockers.length > 0 ? (
@@ -403,13 +447,26 @@ export default async function RiderDetailPage({ params }: { params: Promise<{ id
                   ) : (
                     <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">Everything verified — ready to approve.</p>
                   )}
-                  <ActionForm action={approveRider} submit="Approve rider" pendingLabel="Approving…" buttonClass="btn btn-primary w-full" disabled={blockers.length > 0} className="space-y-3">
+                  <ActionForm action={approveRider} submit="Approve and issue contract" pendingLabel="Approving…" buttonClass="btn btn-primary w-full" disabled={blockers.length > 0} className="space-y-3">
                     <input type="hidden" name="riderId" value={rider.id} />
+                    <p className="text-xs leading-relaxed text-slate-500">
+                      Approving issues the employment contract straight away, so these terms go on it. The start date must not be before today if you want to agree a fixed term later — a fixed term has to be signed before the first working day.
+                    </p>
                     <div>
                       <label className="label" htmlFor="et">Employment type</label>
                       <select id="et" name="employmentType" defaultValue={rider.employmentType ?? "WERKSTUDENT"} className="input">
                         {Object.entries(EMPLOYMENT_TYPES).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="label" htmlFor="sd">Start date</label>
+                        <input id="sd" type="date" name="startDate" required className="input" />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="hr">Hourly rate (EUR)</label>
+                        <input id="hr" type="text" inputMode="decimal" name="hourly" placeholder="13,82" required className="input" />
+                      </div>
                     </div>
                   </ActionForm>
                   <Transition riderId={rider.id} to="REJECTED" label="Reject application" tone="danger" reason />
