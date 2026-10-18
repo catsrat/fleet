@@ -9,8 +9,14 @@ export const COMPANY = {
    * August 2022 omitting them is a fineable offence. Anything left blank prints a visible gap.
    */
   employer: {
-    legalName: "Nucleus Tech",
-    addressLines: [] as readonly string[],
+    // "(haftungsbeschränkt)" is part of the firm name, not decoration: § 5a Abs. 1 GmbHG requires it,
+    // and a managing director who drops it can be held personally liable for the appearance of a GmbH.
+    legalName: "Nucleus Tech UG (haftungsbeschränkt)",
+    addressLines: ["Toni-Sender-Straße 4", "65936 Frankfurt am Main"] as readonly string[],
+    /** Registergericht and HRB number. § 35a GmbHG wants these on business letters; printed when set. */
+    register: "",
+    /** Managing director(s), also a § 35a item. */
+    managingDirector: "",
   },
 } as const;
 

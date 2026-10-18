@@ -106,6 +106,10 @@ export function buildContractPdf(i: ContractInput): Buffer {
   for (const line of COMPANY.employer.addressLines.length ? COMPANY.employer.addressLines : [BLANK]) {
     para(line, { size: 10 });
   }
+  // § 35a GmbHG items, printed only once they are filled in.
+  for (const line of [COMPANY.employer.register, COMPANY.employer.managingDirector].filter(Boolean)) {
+    para(line, { size: 9 });
+  }
   para("und", { size: 10, spaceBefore: 6 });
   para(`${fullName(i.rider)}, geboren am ${fmt(i.rider.dateOfBirth)}, wohnhaft in ${i.rider.city || BLANK} (nachfolgend „Beschäftigte:r“)`, { size: 10 });
   para(`Beschäftigungsart: ${EMPLOYMENT_LABEL_DE[i.employmentType]}`, { size: 10, spaceBefore: 8 });
